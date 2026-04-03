@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AV Delay Dashboard  -  The Cost of Blocking Autonomous Vehicles</title>
+  <meta name="description" content="Tracking the preventable human cost of regulatory delays blocking autonomous vehicle deployment across US cities. Data-driven dashboard covering Boston, DC, NYC, Chicago, and Seattle.">
+
+  <!-- OpenGraph -->
+  <meta property="og:type"        content="website">
+  <meta property="og:title"       content="AV Delay Dashboard  -  The Cost of Blocking Autonomous Vehicles">
+  <meta property="og:description" content="Tracking the preventable human cost of regulatory delays blocking autonomous vehicle deployment across US cities.">
+  <meta property="og:url"         content="https://andrewrosenthal.github.io/av-delay-dashboard/">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card"        content="summary_large_image">
+  <meta name="twitter:title"       content="AV Delay Dashboard">
+  <meta name="twitter:description" content="The preventable human cost of blocking autonomous vehicle deployment.">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700;800&display=swap" rel="stylesheet">
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- ═══ HEADER ═══ -->
+  <header id="site-header">
+    <div class="container">
+      <div class="header-inner">
+        <div class="site-title">AV Delay <span>Dashboard</span></div>
+        <nav id="header-nav" class="header-nav" aria-label="City navigation">
+          <!-- Populated by JS -->
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <!-- ═══ HERO / NATIONAL COUNTER ═══ -->
+  <section id="hero" aria-labelledby="hero-heading">
+    <div class="container">
+      <div class="hero-eyebrow">National Estimated Cost</div>
+      <div class="hero-title-container">
+        <h1 class="hero-title" id="national-counter-value" aria-live="polite" aria-label="National preventable deaths counter">0.00</h1>
+      </div>
+      <p class="hero-label">
+        <strong>Estimated preventable deaths</strong> across tracked cities since their respective delay start dates
+      </p>
+      <p class="hero-methodology">
+        85% crash reduction (Kusano et al. 2024) × 10% VMT share (Fehr &amp; Peers 2019).
+        Counter ticks in real time. See <a href="#methodology">methodology</a> for assumptions and limitations.
+      </p>
+      <button class="scroll-cta" id="scroll-to-cities" aria-label="View cities">
+        View tracked cities ↓
+      </button>
+    </div>
+  </section>
+
+  <!-- ═══ CITY GRID ═══ -->
+  <section id="city-grid" class="scroll-anchor">
+    <div class="container">
+      <div class="section-label">Blocked &amp; Delayed Cities</div>
+      <div class="city-cards" id="city-cards-grid" role="list">
+        <!-- Populated by JS -->
+      </div>
+
+      <div style="margin-top:16px;font-size:12px;color:var(--text-muted)">
+        Click a city for its detailed profile →
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ CITY DETAIL ═══ -->
+  <section id="city-detail" class="scroll-anchor" aria-label="City detail panel">
+    <div id="city-detail-wrapper">
+      <div class="empty-detail" id="city-detail-empty">
+        <div class="arrow">↑</div>
+        Select a city above to see its full profile
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ COMPARISON ═══ -->
+  <section id="comparison" class="scroll-anchor">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="section-heading">Meanwhile, Elsewhere</h2>
+        <p class="section-subheading">
+          Other US cities moved from testing to commercial driverless service in months.
+          Blocked cities have been waiting years  -  with no end in sight.
+        </p>
+      </div>
+
+      <div class="subsection-title">Where Waymo IS Operational</div>
+      <div id="op-cities-grid" class="op-city-cards">
+        <!-- Populated by JS -->
+      </div>
+
+      <div class="subsection-title" style="margin-top:32px">Time from Testing Start → Commercial Launch</div>
+      <div class="chart-container" style="height:320px;padding-bottom:30px">
+        <canvas id="time-to-launch-chart"></canvas>
+      </div>
+
+      <div class="subsection-title" style="margin-top:32px">Waymo vs. Human Drivers  -  Safety Rate</div>
+      <div class="chart-container">
+        <div class="chart-title">Incidents per million miles (note: methodologies differ  -  see methodology section)</div>
+        <canvas id="safety-comparison-chart" height="180"></canvas>
+      </div>
+
+      <div class="subsection-title" style="margin-top:32px">City-by-City Regulatory Status</div>
+      <div style="overflow-x:auto">
+        <table class="status-table" aria-label="City regulatory status comparison">
+          <thead>
+            <tr>
+              <th>City</th>
+              <th>Status</th>
+              <th>Est. Preventable Deaths</th>
+              <th>Key Blocker</th>
+            </tr>
+          </thead>
+          <tbody id="status-table-body">
+            <!-- Populated by JS -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ METHODOLOGY ═══ -->
+  <section id="methodology" class="scroll-anchor">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="section-heading">Methodology &amp; Data Sources</h2>
+        <p class="section-subheading">
+          All calculations are estimates with significant uncertainty. Full transparency on assumptions below.
+        </p>
+      </div>
+
+      <!-- Counter formula -->
+      <div class="method-card">
+        <div class="method-title">Counter Formula</div>
+        <div class="method-body">
+          <p>
+            For each city, we calculate <strong>cumulative traffic fatalities since the delay start date</strong>
+            using linear interpolation within each year of reported data.
+            We then apply:
+          </p>
+          <p style="margin:12px 0;padding:12px 16px;background:var(--bg-highlight);border-radius:6px;font-family:var(--font-mono);font-size:13px">
+            Preventable Deaths = Cumulative Fatalities × <span style="color:var(--red)">10% VMT share</span> × <span style="color:var(--green)">85% crash reduction</span>
+          </p>
+          <p>
+            <strong>10% VMT share:</strong> Fehr &amp; Peers (2019) found ride-hail accounts for 1–13% of city-core
+            vehicle miles traveled across major US cities (DC: 6.9%, SF: 12.8%). We use 10% as a conservative proxy,
+            assuming AVs would capture most existing ride-hail plus modest growth.
+          </p>
+          <p>
+            <strong>85% crash reduction:</strong> From Kusano et al. (2024/2025) peer-reviewed studies.
+            Waymo demonstrated 85% fewer injury-reported crashes across 56.7M miles of operation vs. human drivers.
+          </p>
+          <p>
+            <strong>What this measures:</strong> The estimated opportunity cost of regulatory delay  -  if ride-hail-equivalent
+            AVs had been operating in these cities, how many crashes would have been prevented? This is not a certainty;
+            it is an estimate of what was likely preventable.
+          </p>
+          <p>
+            <strong>What this does NOT account for:</strong> Induced demand, non-Waymo AV providers,
+            network effects, or variation in AV performance by city environment. City-level fatality data
+            may be incomplete  -  TODOs are marked in the code where verification is needed.
+          </p>
+        </div>
+      </div>
+
+      <!-- Waymo safety data -->
+      <div class="method-card">
+        <div class="method-title">Waymo Peer-Reviewed Safety Record</div>
+        <div class="safety-stats-row">
+          <div class="safety-stat-item">
+            <div class="safety-stat-value">−85%</div>
+            <div class="safety-stat-label">Injury crash reduction vs. human drivers</div>
+          </div>
+          <div class="safety-stat-item">
+            <div class="safety-stat-value">−92%</div>
+            <div class="safety-stat-label">Pedestrian injury reduction</div>
+          </div>
+          <div class="safety-stat-item">
+            <div class="safety-stat-value">−96%</div>
+            <div class="safety-stat-label">Intersection crash reduction</div>
+          </div>
+          <div class="safety-stat-item">
+            <div class="safety-stat-value">56.7M</div>
+            <div class="safety-stat-label">Miles analyzed (2025 study)</div>
+          </div>
+        </div>
+        <div class="method-body">
+          <div class="method-sources">
+            <a href="https://doi.org/10.1080/15389588.2024.2380786" target="_blank" rel="noopener">
+              Kusano et al. (2024)  -  85% fewer injury crashes, 7.1M miles ↗
+            </a>
+            <a href="https://doi.org/10.1080/15389588.2025.2499887" target="_blank" rel="noopener">
+              Kusano et al. (2025)  -  85% fewer serious injury+ crashes, 56.7M miles ↗
+            </a>
+            <a href="https://www.swissre.com/institute/research/topics-and-risk-dialogues/digital-business-model-and-cyber-risk/autonomous-vehicles-waymo-insurance.html" target="_blank" rel="noopener">
+              Swiss Re / Waymo (2024)  -  Zero bodily injury claims vs. human baseline ↗
+            </a>
+            <a href="https://www.prnewswire.com/news-releases/new-study-finds-over-97-of-vehicle-miles-traveled-in-major-us-cities-are-completed-by-personal-and-commercial-vehicles-300896095.html" target="_blank" rel="noopener">
+              Fehr &amp; Peers (2019)  -  Ride-hail VMT share in major US cities ↗
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Why AVs prevent crashes -->
+      <div class="method-card">
+        <div class="method-title">Why Autonomous Vehicles Prevent Crashes</div>
+        <div class="method-body">
+          <p>The most common human-error causes of crashes are <strong>behaviors AVs simply do not exhibit.</strong>
+          Source: <a href="https://www.nhtsa.gov/risky-driving/drunk-driving" target="_blank" rel="noopener">NHTSA Risky Driving</a> /
+          <a href="https://crashstats.nhtsa.dot.gov/" target="_blank" rel="noopener">NHTSA Traffic Safety Facts</a>.</p>
+        </div>
+        <div class="bar-chart" style="margin-top:16px">
+          <div class="bar-row">
+            <div class="bar-label"><a href="https://www.nhtsa.gov/risky-driving/drunk-driving" target="_blank" rel="noopener" style="color:var(--text-secondary)">Drunk driving ↗</a></div>
+            <div class="bar-track">
+              <div class="bar-fill red" style="width:34%"></div>
+              <span class="bar-value">~31–34%</span>
+            </div>
+          </div>
+          <div class="bar-row">
+            <div class="bar-label" style="font-size:10px;color:var(--green)">AVs don't drink</div>
+            <div class="bar-track" style="background:var(--green-bg)">
+              <div class="bar-fill green" style="width:0%"></div>
+              <span class="bar-value" style="color:var(--green)">0%</span>
+            </div>
+          </div>
+          <div class="bar-row" style="margin-top:8px">
+            <div class="bar-label"><a href="https://www.nhtsa.gov/risky-driving/speeding" target="_blank" rel="noopener" style="color:var(--text-secondary)">Speeding ↗</a></div>
+            <div class="bar-track">
+              <div class="bar-fill yellow" style="width:29%"></div>
+              <span class="bar-value">~29%</span>
+            </div>
+          </div>
+          <div class="bar-row">
+            <div class="bar-label" style="font-size:10px;color:var(--green)">AVs obey speed limits</div>
+            <div class="bar-track" style="background:var(--green-bg)">
+              <div class="bar-fill green" style="width:0%"></div>
+              <span class="bar-value" style="color:var(--green)">0%</span>
+            </div>
+          </div>
+          <div class="bar-row" style="margin-top:8px">
+            <div class="bar-label"><a href="https://www.nhtsa.gov/risky-driving/distracted-driving" target="_blank" rel="noopener" style="color:var(--text-secondary)">Distracted driving ↗</a></div>
+            <div class="bar-track">
+              <div class="bar-fill blue" style="width:9%"></div>
+              <span class="bar-value">~8–10%</span>
+            </div>
+          </div>
+          <div class="bar-row">
+            <div class="bar-label" style="font-size:10px;color:var(--green)">AVs don't text</div>
+            <div class="bar-track" style="background:var(--green-bg)">
+              <div class="bar-fill green" style="width:0%"></div>
+              <span class="bar-value" style="color:var(--green)">0%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Safety rate comparison note -->
+      <div class="method-card">
+        <div class="method-title">Safety Rate Comparison  -  Methodological Note</div>
+        <div class="method-body">
+          <p>
+            The safety comparison chart shows incident rates across providers, but the methodologies differ substantially:
+          </p>
+          <p>
+            <strong>Waymo:</strong> Uses police-reported crashes, peer-reviewed analysis. Serious injuries per million miles: 0.02.
+            Source: <a href="https://doi.org/10.1080/15389588.2024.2380786" target="_blank" rel="noopener">Kusano et al. (2024) ↗</a>
+          </p>
+          <p>
+            <strong>Uber (0.45 accidents/million miles):</strong> Self-reported figure from the
+            <a href="https://www.uber.com/us/en/about/reports/us-safety-report/" target="_blank" rel="noopener">Uber US Safety Report ↗</a>.
+            Self-reported data typically undercounts incidents compared to police-reported data.
+          </p>
+          <p>
+            <strong>Lyft (0.38 accidents/million miles):</strong> Self-reported figure from the
+            <a href="https://www.lyft.com/safety" target="_blank" rel="noopener">Lyft Community Safety Report ↗</a>.
+            Same methodological caveat applies.
+          </p>
+          <p>
+            The direct comparison should be interpreted as directionally informative, not precise.
+            The peer-reviewed Kusano et al. studies comparing Waymo to human drivers in matched conditions
+            are the more rigorous source.
+          </p>
+        </div>
+      </div>
+
+      <!-- Disclaimer -->
+      <div class="disclaimer">
+        <strong>Disclaimer:</strong> This dashboard presents estimates based on publicly available data and peer-reviewed research.
+        All numbers involve significant uncertainty. The counter represents an estimate of opportunity cost  - 
+        not a guarantee of outcomes. City-level fatality data is sourced from Vision Zero programs, NHTSA FARS,
+        and local transportation agencies; some figures are projections pending updated official data.
+        This site is pro-AV-deployment advocacy presenting a data-driven case that regulatory inaction has a measurable
+        human cost. It does not claim that AV deployment would have zero negative effects or that all concerns
+        raised by opponents are illegitimate. See individual city profiles for honest acknowledgment of real challenges.
+      </div>
+
+      <!-- National breakdown -->
+      <div class="subsection-title" style="margin-top:32px">Estimated Preventable Deaths by City</div>
+      <div class="chart-container">
+        <div id="national-breakdown">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ FOOTER ═══ -->
+  <footer>
+    <div class="container">
+      <div class="footer-inner">
+        <div class="footer-text">
+          Built with public data. All sources cited. Numbers are estimates  -  see methodology.
+          Inspired by <a href="https://tbhochman.github.io/dc-waymo-dashboard/" target="_blank" rel="noopener">tbhochman/dc-waymo-dashboard</a>.
+        </div>
+        <div class="footer-links">
+          <a href="https://github.com/andrewrosenthal/av-delay-dashboard" target="_blank" rel="noopener">GitHub ↗</a>
+          <a href="#methodology">Methodology</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Scripts (data first, then charts, then main) -->
+  <script src="js/data.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/main.js"></script>
+
+</body>
+</html>
