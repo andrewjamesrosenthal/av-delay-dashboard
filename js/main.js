@@ -15,7 +15,9 @@ const $ = id => document.getElementById(id);
 
 // ─── Init ───
 document.addEventListener('DOMContentLoaded', () => {
+  renderNationalSummary();
   renderCityCards();
+  renderScenarios();
   renderOperationalCities();
   renderStatusTable();
   renderNationalBreakdown();
@@ -34,12 +36,13 @@ function renderCityCards() {
 
   grid.innerHTML = CITIES.map(city => {
     const deaths = calculatePreventableDeaths(city);
+    const h = calculatePreventedHarms(city);
     return `
       <div class="city-card ${city.status}"
            id="card-${city.id}"
            role="button"
            tabindex="0"
-           aria-label="${city.name}  -  ${city.statusLabel}"
+           aria-label="${city.name} - ${city.statusLabel}"
            onclick="selectCity('${city.id}')"
            onkeydown="if(event.key==='Enter'||event.key===' ')selectCity('${city.id}')">
         <div class="card-city-name">${city.name}</div>
@@ -47,6 +50,20 @@ function renderCityCards() {
         <div class="card-status ${city.status}">${statusLabel(city.status)}</div>
         <div class="card-counter" id="card-counter-${city.id}">${deaths.toFixed(2)}</div>
         <div class="card-counter-label">est. preventable deaths<br>since delay start</div>
+        <div class="card-harms">
+          <div class="card-harm-item">
+            <span class="card-harm-value" style="color:var(--yellow)">${h.injuryCrashes.toFixed(2)}</span>
+            <span class="card-harm-label">inj. crashes</span>
+          </div>
+          <div class="card-harm-item">
+            <span class="card-harm-value" style="color:var(--accent)">${h.seriousInjuries.toFixed(2)}</span>
+            <span class="card-harm-label">serious inj.</span>
+          </div>
+          <div class="card-harm-item">
+            <span class="card-harm-value" style="color:var(--green)">${h.pedestrianInjuries.toFixed(2)}</span>
+            <span class="card-harm-label">ped. inj.</span>
+          </div>
+        </div>
         <div class="card-blocker">${city.keyBlocker}</div>
       </div>`;
   }).join('');
@@ -151,6 +168,9 @@ function renderCityDetail(city) {
 
           <div class="subsection-title">Counter Breakdown</div>
           ${renderCounterBreakdown(city)}
+
+          <div class="subsection-title">Estimated Harms Prevented (Conservative Scenario)</div>
+          ${renderHarmsPrevented(city)}
 
           ${city.challenges.length ? `
             <div class="subsection-title">Honest Challenges</div>
@@ -303,6 +323,38 @@ function renderKeyStats(city) {
   </ul>`;
 }
 
+function renderHarmsPrevented(city) {
+  const h = calculatePreventedHarms(city);
+  return `
+    <div class="harms-grid">
+      <div class="harm-card" style="border-top:3px solid var(--red)">
+        <div class="harm-value" style="color:var(--red)">${h.deaths.toFixed(2)}</div>
+        <div class="harm-label">Preventable Deaths</div>
+        <div class="harm-source">85% crash reduction × VMT share</div>
+      </div>
+      <div class="harm-card" style="border-top:3px solid var(--yellow)">
+        <div class="harm-value" style="color:var(--yellow)">${h.injuryCrashes.toFixed(2)}</div>
+        <div class="harm-label">Preventable Injury Crashes</div>
+        <div class="harm-source">Deaths × 61 (NHTSA 2023 ratio)</div>
+      </div>
+      <div class="harm-card" style="border-top:3px solid var(--accent)">
+        <div class="harm-value" style="color:var(--accent)">${h.seriousInjuries.toFixed(2)}</div>
+        <div class="harm-label">Preventable Serious Injuries</div>
+        <div class="harm-source">Deaths × 6 (NHTSA estimate)</div>
+      </div>
+      <div class="harm-card" style="border-top:3px solid var(--green)">
+        <div class="harm-value" style="color:var(--green)">${h.pedestrianInjuries.toFixed(2)}</div>
+        <div class="harm-label">Preventable Pedestrian Injuries</div>
+        <div class="harm-source">92% pedestrian reduction (Kusano 2024)</div>
+      </div>
+    </div>
+    <p style="font-size:11px;color:var(--text-muted);line-height:1.6">
+      Injury crash and injury figures are estimated using national NHTSA ratios applied to city fatality data.
+      City-level crash and injury data is not available for all years; these are approximations.
+      <a href="https://crashstats.nhtsa.dot.gov/" target="_blank" rel="noopener">NHTSA Traffic Safety Facts ↗</a>
+    </p>`;
+}
+
 function renderCounterBreakdown(city) {
   const now = new Date();
   const deaths = calculatePreventableDeaths(city, now);
@@ -310,7 +362,7 @@ function renderCounterBreakdown(city) {
   const monthsElapsed = (now - delayStart) / (1000 * 60 * 60 * 24 * 30.44);
 
   // Rough cumulative fatalities
-  const totalFatalities = deaths / COUNTER_METHODOLOGY.effectiveFactor;
+  const totalFatalities = deaths / city.effectiveFactor;
 
   return `
     <div class="stats-grid">
@@ -325,9 +377,14 @@ function renderCounterBreakdown(city) {
         <div class="stat-note">City-level, interpolated</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">VMT share assumption</div>
-        <div class="stat-value text-mono">10%</div>
-        <div class="stat-note">Conservative proxy (Fehr & Peers 2019)</div>
+        <div class="stat-label">Ride-hail VMT share</div>
+        <div class="stat-value text-mono">${(city.rideHailVmtShare * 100).toFixed(1)}%</div>
+        <div class="stat-note">City-specific estimate (Fehr & Peers 2019)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Waymo market share</div>
+        <div class="stat-value text-mono">~22%</div>
+        <div class="stat-note">Of ride-hail market (YipitData/a16z, SF end-2024)</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Crash reduction (Waymo)</div>
@@ -337,7 +394,7 @@ function renderCounterBreakdown(city) {
       <div class="stat-card" style="border-color:var(--red)">
         <div class="stat-label">Estimated preventable deaths</div>
         <div class="stat-value text-mono text-red">${deaths.toFixed(4)}</div>
-        <div class="stat-note">= total fatalities × 10% VMT × 85% reduction</div>
+        <div class="stat-note">= fatalities × ${(city.rideHailVmtShare * 100).toFixed(1)}% VMT × 22% Waymo share × 85% reduction</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Current rate</div>
@@ -345,6 +402,131 @@ function renderCounterBreakdown(city) {
         <div class="stat-note">Estimated preventable deaths per year</div>
       </div>
     </div>`;
+}
+
+// ─────────────────────────────────────────────
+// NATIONAL SUMMARY STRIP
+// ─────────────────────────────────────────────
+
+function renderNationalSummary() {
+  const grid = $('national-summary-grid');
+  if (!grid) return;
+
+  const now = new Date();
+  const conservativeScenario = DEPLOYMENT_SCENARIOS[0];
+  const nationalDeaths    = calculateNationalScenarioDeaths(conservativeScenario, now);
+  const injuryCrashes     = nationalDeaths * INJURY_CRASH_PER_FATALITY;
+  const seriousInjuries   = nationalDeaths * SERIOUS_INJURY_PER_FATALITY;
+  const pedInjuries       = nationalDeaths * PEDESTRIAN_INJURY_PER_FATALITY * (0.92 / 0.85);
+
+  const stats = [
+    { value: nationalDeaths.toFixed(2),  label: 'Preventable Deaths',             color: 'var(--red)',    note: '85% crash reduction x VMT share' },
+    { value: injuryCrashes.toFixed(2),   label: 'Preventable Injury Crashes',     color: 'var(--yellow)', note: 'Deaths x 61 (NHTSA 2023)' },
+    { value: seriousInjuries.toFixed(2), label: 'Preventable Serious Injuries',   color: 'var(--accent)', note: 'Deaths x 6 (NHTSA estimate)' },
+    { value: pedInjuries.toFixed(2),     label: 'Preventable Pedestrian Injuries',color: 'var(--green)',  note: '92% reduction (Kusano 2024)' },
+  ];
+
+  grid.innerHTML = stats.map(s => `
+    <div class="summary-stat">
+      <div class="summary-stat-value" style="color:${s.color}">${s.value}</div>
+      <div class="summary-stat-label">${s.label}</div>
+      <div class="summary-stat-note">${s.note}</div>
+    </div>`).join('');
+}
+
+function renderCityHarmsBreakdown() {
+  const container = $('city-harms-breakdown');
+  if (!container) return;
+
+  const rows = CITIES.map(city => {
+    const h = calculatePreventedHarms(city);
+    return `
+      <tr>
+        <td style="font-weight:600">${city.name}</td>
+        <td class="text-mono" style="color:var(--red)">${h.deaths.toFixed(2)}</td>
+        <td class="text-mono" style="color:var(--yellow)">${h.injuryCrashes.toFixed(2)}</td>
+        <td class="text-mono" style="color:var(--accent)">${h.seriousInjuries.toFixed(2)}</td>
+        <td class="text-mono" style="color:var(--green)">${h.pedestrianInjuries.toFixed(2)}</td>
+      </tr>`;
+  }).join('');
+
+  container.innerHTML = `
+    <div style="overflow-x:auto">
+      <table class="status-table harms-table">
+        <thead>
+          <tr>
+            <th>City</th>
+            <th style="color:var(--red)">Preventable Deaths</th>
+            <th style="color:var(--yellow)">Preventable Injury Crashes</th>
+            <th style="color:var(--accent)">Preventable Serious Injuries</th>
+            <th style="color:var(--green)">Preventable Pedestrian Injuries</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+// ─────────────────────────────────────────────
+// SCENARIOS SECTION
+// ─────────────────────────────────────────────
+
+function renderScenarios() {
+  const grid = $('scenarios-grid');
+  if (!grid) return;
+
+  const now = new Date();
+  const maxDeaths = calculateNationalScenarioDeaths(DEPLOYMENT_SCENARIOS[DEPLOYMENT_SCENARIOS.length - 1], now);
+
+  grid.innerHTML = DEPLOYMENT_SCENARIOS.map(scenario => {
+    const deaths        = calculateNationalScenarioDeaths(scenario, now);
+    const injuryCrashes = deaths * INJURY_CRASH_PER_FATALITY;
+    const serious       = deaths * SERIOUS_INJURY_PER_FATALITY;
+    const ped           = deaths * PEDESTRIAN_INJURY_PER_FATALITY * (0.92 / 0.85);
+    const barPct        = (deaths / maxDeaths * 100).toFixed(1);
+
+    const vmtLabel = scenario.vmtOverride != null
+      ? `${(scenario.vmtOverride * 100).toFixed(0)}% of all city VMT`
+      : scenario.waymoShareOverride != null
+        ? 'All ride-hail VMT'
+        : `~${(CITIES.reduce((s,c) => s + c.rideHailVmtShare, 0) / CITIES.length * 22).toFixed(1)}% of city VMT (avg)`;
+
+    return `
+      <div class="scenario-row">
+        <style>.scenario-row:nth-child(${DEPLOYMENT_SCENARIOS.indexOf(scenario) + 1})::before { background: ${scenario.color}; }</style>
+        <div>
+          <div class="scenario-row-label" style="color:${scenario.color}">${scenario.label}</div>
+          <div class="scenario-row-sublabel">${scenario.sublabel}</div>
+        </div>
+        <div class="scenario-row-bar-area">
+          <div class="scenario-bar-track">
+            <div class="scenario-bar-fill" style="width:${barPct}%;background:${scenario.color}"></div>
+          </div>
+          <div class="scenario-row-mini-stats">
+            <div class="scenario-mini-stat">
+              <span class="scenario-mini-stat-value">${injuryCrashes.toFixed(2)}</span>
+              <span class="scenario-mini-stat-label">preventable injury crashes</span>
+            </div>
+            <div class="scenario-mini-stat">
+              <span class="scenario-mini-stat-value">${serious.toFixed(2)}</span>
+              <span class="scenario-mini-stat-label">preventable serious injuries</span>
+            </div>
+            <div class="scenario-mini-stat">
+              <span class="scenario-mini-stat-value">${ped.toFixed(2)}</span>
+              <span class="scenario-mini-stat-label">preventable pedestrian injuries</span>
+            </div>
+            <div class="scenario-mini-stat">
+              <span class="scenario-mini-stat-value" style="color:var(--text-muted);font-size:10px">${vmtLabel}</span>
+              <span class="scenario-mini-stat-label">VMT assumption</span>
+            </div>
+          </div>
+        </div>
+        <div class="scenario-row-number">
+          <div class="scenario-big-number" style="color:${scenario.color}">${deaths.toFixed(2)}</div>
+          <div class="scenario-big-label">deaths</div>
+        </div>
+      </div>`;
+  }).join('');
 }
 
 // ─────────────────────────────────────────────

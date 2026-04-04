@@ -53,12 +53,22 @@
         <strong>Estimated preventable deaths</strong> across tracked cities since their respective delay start dates
       </p>
       <p class="hero-methodology">
-        85% crash reduction (Kusano et al. 2024) × 10% VMT share (Fehr &amp; Peers 2019).
+        City ride-hail VMT share x Waymo ~22% market share x 85% crash reduction (Kusano et al. 2025).
         Counter ticks in real time. See <a href="#methodology">methodology</a> for assumptions and limitations.
       </p>
       <button class="scroll-cta" id="scroll-to-cities" aria-label="View cities">
         View tracked cities ↓
       </button>
+    </div>
+  </section>
+
+  <!-- ═══ NATIONAL SUMMARY ═══ -->
+  <section id="national-summary">
+    <div class="container">
+      <div class="section-label" style="margin-bottom:16px">Estimated preventable harms across all tracked cities since each city's delay start date</div>
+      <div class="national-summary-grid" id="national-summary-grid">
+        <!-- Populated by JS -->
+      </div>
     </div>
   </section>
 
@@ -86,14 +96,38 @@
     </div>
   </section>
 
+  <!-- ═══ SCENARIOS ═══ -->
+  <section id="scenarios" class="scroll-anchor">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="section-heading">What If Waymo Scaled Up?</h2>
+        <p class="section-subheading">
+          The main counter uses the conservative assumption that Waymo holds ~22% of the ride-hail market.
+          Here's how the numbers change as autonomous vehicles displace more and more driving.
+        </p>
+      </div>
+
+      <div id="scenarios-grid" class="scenarios-rows">
+        <!-- Populated by JS -->
+      </div>
+
+      <div class="scenario-disclaimer">
+        Illustrative projections, not predictions. All scenarios apply Waymo's peer-reviewed 85% crash reduction (Kusano et al. 2024/2025) to different shares of total city VMT.
+        Higher scenarios assume AV performance at scale matches current deployment data, which may not hold.
+        The conservative scenario is the only figure grounded in observed market data.
+        Injury and crash figures use national NHTSA ratios applied to city fatality data.
+      </div>
+    </div>
+  </section>
+
   <!-- ═══ COMPARISON ═══ -->
   <section id="comparison" class="scroll-anchor">
     <div class="container">
       <div class="section-header">
-        <h2 class="section-heading">Meanwhile, Elsewhere</h2>
+        <h2 class="section-heading">Where AVs Are Already Operating</h2>
         <p class="section-subheading">
           Other US cities moved from testing to commercial driverless service in months.
-          Blocked cities have been waiting years  -  with no end in sight.
+          Blocked cities have been waiting years with no end in sight.
         </p>
       </div>
 
@@ -152,16 +186,19 @@
             We then apply:
           </p>
           <p style="margin:12px 0;padding:12px 16px;background:var(--bg-highlight);border-radius:6px;font-family:var(--font-mono);font-size:13px">
-            Preventable Deaths = Cumulative Fatalities × <span style="color:var(--red)">10% VMT share</span> × <span style="color:var(--green)">85% crash reduction</span>
+            Preventable Deaths = Cumulative Fatalities × <span style="color:var(--red)">city ride-hail VMT share</span> × <span style="color:var(--yellow)">~22% Waymo market share</span> × <span style="color:var(--green)">85% crash reduction</span>
           </p>
           <p>
-            <strong>10% VMT share:</strong> Fehr &amp; Peers (2019) found ride-hail accounts for 1–13% of city-core
-            vehicle miles traveled across major US cities (DC: 6.9%, SF: 12.8%). We use 10% as a conservative proxy,
-            assuming AVs would capture most existing ride-hail plus modest growth.
+            <strong>City ride-hail VMT share:</strong> Fehr &amp; Peers (2019) measured ride-hail at 7.2% of city-core VMT in DC and 12.8% in SF.
+            Estimates for other cities (Boston 5%, NYC 8%, Chicago 6%, Seattle 7%) are based on city density and TNC market size, not direct measurement.
           </p>
           <p>
-            <strong>85% crash reduction:</strong> From Kusano et al. (2024/2025) peer-reviewed studies.
-            Waymo demonstrated 85% fewer injury-reported crashes across 56.7M miles of operation vs. human drivers.
+            <strong>Waymo ~22% market share:</strong> YipitData (via a16z) found Waymo reached approximately 22% of the SF ride-hail market by November 2024.
+            Applied as a proxy for all tracked cities, which overstates Waymo's share in cities where it has not yet deployed.
+          </p>
+          <p>
+            <strong>85% crash reduction:</strong> From Kusano et al. (2025), 85% fewer suspected serious injury+ crashes across 56.7M rider-only miles vs. human drivers.
+            The 2024 study (7.1M miles) showed 80% fewer any-injury crashes; the 2025 figure is used here as it covers more data and a broader crash type analysis.
           </p>
           <p>
             <strong>What this measures:</strong> The estimated opportunity cost of regulatory delay  -  if ride-hail-equivalent
@@ -200,7 +237,7 @@
         <div class="method-body">
           <div class="method-sources">
             <a href="https://doi.org/10.1080/15389588.2024.2380786" target="_blank" rel="noopener">
-              Kusano et al. (2024)  -  85% fewer injury crashes, 7.1M miles ↗
+              Kusano et al. (2024)  -  80% fewer any-injury crashes, 7.1M miles ↗
             </a>
             <a href="https://doi.org/10.1080/15389588.2025.2499887" target="_blank" rel="noopener">
               Kusano et al. (2025)  -  85% fewer serious injury+ crashes, 56.7M miles ↗

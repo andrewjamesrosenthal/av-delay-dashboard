@@ -6,10 +6,13 @@
 
 const COUNTER_METHODOLOGY = {
   crashReductionFactor: 0.85,
-  vmtShareFactor: 0.10,
-  effectiveFactor: 0.085, // 85% crash reduction × 10% VMT share
-  description: 'Applies Kusano et al. (2024/2025) 85% crash reduction to estimated 10% ride-hail VMT share (Fehr & Peers 2019, conservative proxy for all cities).',
-  vmtSource: 'Fehr & Peers (2019): Ride-hail is 1–13% of city-core VMT across major US cities. DC: 6.9%, SF: 12.8%. 10% used as conservative proxy.',
+  // Effective factor = city ride-hail VMT share × Waymo market share × 85% crash reduction
+  // Waymo market share ~22% based on SF YipitData end-of-2024 (via a16z)
+  // City ride-hail VMT shares from Fehr & Peers (2019); estimates used where not measured
+  waymoMarketShare: 0.22,
+  description: 'Applies Kusano et al. (2024/2025) 85% crash reduction × city-specific ride-hail VMT share (Fehr & Peers 2019) × Waymo\'s observed ~22% ride-hail market share (YipitData/a16z, SF end-2024).',
+  vmtSource: 'Fehr & Peers (2019): DC 6.9%, SF 12.8%. City estimates used for Boston, NYC, Chicago, Seattle where not directly measured.',
+  marketShareSource: 'YipitData via a16z: Waymo reached ~22% of SF rideshare market by end of 2024.',
 };
 
 const WAYMO_SAFETY = {
@@ -55,15 +58,71 @@ const CRASH_CAUSES = [
 ];
 
 // ─────────────────────────────────────────────
+// DEPLOYMENT SCENARIOS
+// For the "what if Waymo scaled up?" section
+// effectiveVmtShare = share of ALL city VMT covered by Waymo AVs
+// preventable = cumulative fatalities × effectiveVmtShare × 85%
+// ─────────────────────────────────────────────
+
+const DEPLOYMENT_SCENARIOS = [
+  {
+    id: 'conservative',
+    label: 'Current Trajectory',
+    sublabel: 'Waymo at ~22% of ride-hail market',
+    description: 'Waymo holds ~22% of the ride-hail market in each city (SF end-2024 benchmark, YipitData). This is the same assumption used in the main counter.',
+    // Uses each city's own effectiveFactor (ride-hail VMT × 22% × 85%)
+    vmtOverride: null,
+    color: '#58a6ff',
+    icon: '→',
+  },
+  {
+    id: 'full-ridehail',
+    label: 'Full Ride-Hail Capture',
+    sublabel: 'Waymo dominates ride-hail',
+    description: 'Waymo captures 100% of the ride-hail market in each city. Ride-hail VMT stays the same; Waymo just replaces all of it.',
+    // Uses city ride-hail VMT × 100% × 85%
+    waymoShareOverride: 1.0,
+    vmtOverride: null,
+    color: '#d29922',
+    icon: '→→',
+  },
+  {
+    id: 'moderate-personal',
+    label: 'Early Personal Vehicle Displacement',
+    sublabel: '+15% of all city VMT',
+    description: 'AVs expand beyond ride-hail into personal vehicle trips: commuters, deliveries, errands. Covers 15% of all vehicle miles in each city.',
+    vmtOverride: 0.15,
+    color: '#f0883e',
+    icon: '→→→',
+  },
+  {
+    id: 'high-personal',
+    label: 'Broad Autonomous Adoption',
+    sublabel: '+30% of all city VMT',
+    description: 'A future where autonomous vehicles handle roughly a third of all city driving, the level some researchers project for 2035+.',
+    vmtOverride: 0.30,
+    color: '#f85149',
+    icon: '→→→→',
+  },
+];
+
+// National injury crash to fatality ratio (NHTSA 2023: ~40,901 deaths; injury crash count approximated from NHTSA crash data)
+const INJURY_CRASH_PER_FATALITY = 61;
+// Serious injury (suspected serious) to fatality ratio (NHTSA estimate)
+const SERIOUS_INJURY_PER_FATALITY = 6;
+// Pedestrian injury crash to fatality ratio (approximate)
+const PEDESTRIAN_INJURY_PER_FATALITY = 3;
+
+// ─────────────────────────────────────────────
 // OPERATIONAL CITIES (for contrast section)
 // ─────────────────────────────────────────────
 
 const OPERATIONAL_CITIES = [
   { name: 'Phoenix, AZ', launchYear: 2020, monthsToLaunch: null, note: 'First-ever commercial driverless service (2020). 5+ years operational.' },
   { name: 'San Francisco, CA', launchYear: 2023, monthsToLaunch: null, note: 'Commercial launch 2023. Now includes freeway driving.' },
-  { name: 'Los Angeles, CA', launchYear: 2024, monthsToLaunch: 12, note: '~12 months from testing to commercial launch.' },
-  { name: 'Austin, TX', launchYear: 2024, monthsToLaunch: 15, note: '~15 months from testing to launch. Available via Uber app.' },
-  { name: 'Atlanta, GA', launchYear: 2024, monthsToLaunch: 5, note: '~5 months from testing to launch. Available via Uber app.' },
+  { name: 'Los Angeles, CA', launchYear: 2024, monthsToLaunch: 20, note: '~20 months from employee testing (Feb 2023) to commercial launch (Nov 2024).' },
+  { name: 'Austin, TX', launchYear: 2024, monthsToLaunch: 18, note: '~18 months from testing start (early 2023) to commercial launch (Oct 2024). Available via Uber app.' },
+  { name: 'Atlanta, GA', launchYear: 2025, monthsToLaunch: 5, note: '~5 months from employee testing (Jan 2025) to commercial launch (Jun 2025). Available via Uber app.' },
   { name: 'Miami, FL', launchYear: 2026, monthsToLaunch: null, note: 'Planned 2026 expansion.' },
   { name: 'Dallas, TX', launchYear: 2026, monthsToLaunch: null, note: 'Avride also entering market.' },
 ];
@@ -83,6 +142,12 @@ const CITIES = [
     delayStartDate: '2025-06-01', // When commercial deployment first became clearly blocked
 
     keyBlocker: 'No state AV framework + city ordinance requiring human operator and labor study',
+
+    // Effective factor = ride-hail VMT share × Waymo market share × 85% crash reduction
+    // Boston ride-hail VMT: ~5% estimated (no direct Fehr & Peers measurement; less dense than DC/SF)
+    // 5% × 22% × 85% = 0.935%
+    rideHailVmtShare: 0.05,
+    effectiveFactor: 0.05 * 0.22 * 0.85, // ~0.935%
 
     // Annual traffic fatalities (city level unless noted)
     // Source: Vision Zero Boston / Analyze Boston; MassDOT IMPACT; NHTSA FARS
@@ -195,9 +260,15 @@ const CITIES = [
     state: 'District of Columbia',
     status: 'limbo',
     statusLabel: 'Regulatory Limbo',
-    delayStartDate: '2023-01-01', // When DDOT missed the legally mandated study deadline
+    delayStartDate: '2022-10-01', // Statutory deadline for DDOT's legally mandated AV safety study (DC Law 23-156, applicability date Oct 1, 2021 + 1 year)
 
-    keyBlocker: 'DDOT missed legally mandated safety study; enabling legislation blocked by single council member',
+    keyBlocker: 'DDOT missed legally mandated safety study deadline (Oct 2022); enabling legislation blocked by single council member',
+
+    // Effective factor = ride-hail VMT share × Waymo market share × 85% crash reduction
+    // DC ride-hail VMT: 7.2% (Fehr & Peers 2019, directly measured)
+    // 7.2% × 22% × 85% = ~1.35%
+    rideHailVmtShare: 0.072,
+    effectiveFactor: 0.072 * 0.22 * 0.85, // ~1.35%
 
     // Source: DC Vision Zero; Open Data DC; NHTSA FARS
     annualFatalities: {
@@ -206,7 +277,7 @@ const CITIES = [
       2021: 40,
       2022: 35,
       2023: 52,
-      2024: 52,
+      2024: 50,  // DC Vision Zero final count
       2025: 25,  // NSC estimate
       2026: 25,  // projected at 2025 rate
     },
@@ -215,7 +286,7 @@ const CITIES = [
       '~30% of DC fatal crashes involve drunk driving',
       '~29% involve speeding',
       '~8% involve distracted driving',
-      'DC ride-hail is ~7% of city-core VMT (Fehr & Peers)',
+      'DC ride-hail is ~7.2% of city-core VMT (Fehr & Peers 2019)',
       '52 traffic deaths in both 2023 and 2024  -  alarming upward trend',
       'DDOT had a legal obligation to complete the safety study by late 2022  -  never done',
     ],
@@ -290,7 +361,13 @@ const CITIES = [
     statusLabel: 'Effectively Blocked',
     delayStartDate: '2025-01-15', // When restrictive medallion bills were introduced, killing pro-deployment momentum
 
-    keyBlocker: 'State law requires licensed human driver; restrictive bills would give taxi medallion owners exclusive AV taxi rights',
+    keyBlocker: 'State law requires licensed human driver; restrictive bills would give taxi medallion owners priority claim to AV taxi licenses',
+
+    // Effective factor = ride-hail VMT share × Waymo market share × 85% crash reduction
+    // NYC ride-hail VMT: ~8% estimated (high density, large TNC market; no direct Fehr & Peers figure)
+    // 8% × 22% × 85% = ~1.50%
+    rideHailVmtShare: 0.08,
+    effectiveFactor: 0.08 * 0.22 * 0.85, // ~1.50%
 
     // Source: NYC DOT Vision Zero View (https://www.nycvzv.info/); NHTSA FARS
     // TODO: Verify exact annual figures against NYC DOT crash data at https://www.nycvzv.info/
@@ -308,7 +385,7 @@ const CITIES = [
     keyStats: [
       'NYC typically sees 200–260 traffic fatalities per year (TODO: verify with NYC DOT data)',
       'Largest US city with no path to autonomous vehicle deployment',
-      'A793/S2688 would give existing taxi medallion owners exclusive rights to AV taxi licenses',
+      'A793/S2688 would give existing taxi medallion owners priority claim to AV taxi licenses',
       'NYC has its own AV testing rules (NYC Rules § 4-17) requiring separate city permits on top of state law',
       'Densest US city  -  where AV safety benefits could be enormous',
     ],
@@ -409,6 +486,12 @@ const CITIES = [
 
     keyBlocker: 'No comprehensive city or state regulatory framework; safety coordination and labor concerns unresolved',
 
+    // Effective factor = ride-hail VMT share × Waymo market share × 85% crash reduction
+    // Chicago ride-hail VMT: ~6% estimated (large city, significant TNC market)
+    // 6% × 22% × 85% = ~1.12%
+    rideHailVmtShare: 0.06,
+    effectiveFactor: 0.06 * 0.22 * 0.85, // ~1.12%
+
     // Source: Chicago DOT crash data; NHTSA FARS
     // TODO: Verify with Chicago DOT crash portal
     annualFatalities: {
@@ -417,9 +500,9 @@ const CITIES = [
       2021: 140,
       2022: 135,
       2023: 120,
-      2024: 125,  // TODO: verify with Chicago DOT
-      2025: 120,  // TODO: verify with Chicago DOT
-      2026: 120,  // projected
+      2024: 109,  // Chicago DOT / Vision Zero 2024 final count
+      2025: 100,  // Chicago DOT / Vision Zero 2025 (lowest since 2016)
+      2026: 100,  // projected at 2025 rate
     },
 
     keyStats: [
@@ -477,6 +560,12 @@ const CITIES = [
 
     keyBlocker: 'State AV bills stalled; city developing infrastructure but no commercial service permitted',
 
+    // Effective factor = ride-hail VMT share × Waymo market share × 85% crash reduction
+    // Seattle ride-hail VMT: ~7% estimated (tech-heavy city, high TNC adoption)
+    // 7% × 22% × 85% = ~1.31%
+    rideHailVmtShare: 0.07,
+    effectiveFactor: 0.07 * 0.22 * 0.85, // ~1.31%
+
     // Source: Seattle DOT; NHTSA FARS
     // TODO: Verify with Seattle DOT crash data
     annualFatalities: {
@@ -484,9 +573,9 @@ const CITIES = [
       2020: 25,
       2021: 30,
       2022: 32,
-      2023: 28,
-      2024: 28,  // TODO: verify with Seattle DOT
-      2025: 28,  // TODO: verify with Seattle DOT
+      2023: 27,  // Seattle DOT confirmed
+      2024: 29,  // Seattle DOT confirmed
+      2025: 28,  // estimated
       2026: 28,  // projected
     },
 
@@ -583,7 +672,7 @@ function calculatePreventableDeaths(city, asOf) {
     totalFatalities += yearFatalities * fraction;
   }
 
-  return totalFatalities * COUNTER_METHODOLOGY.effectiveFactor;
+  return totalFatalities * city.effectiveFactor;
 }
 
 /**
@@ -596,7 +685,7 @@ function getPreventableDeathRate(city) {
   const now = new Date();
   const year = now.getFullYear();
   const annual = city.annualFatalities[year] ?? city.annualFatalities[year - 1] ?? 0;
-  return (annual * COUNTER_METHODOLOGY.effectiveFactor) / (365.25 * 24 * 3600);
+  return (annual * city.effectiveFactor) / (365.25 * 24 * 3600);
 }
 
 /**
@@ -616,4 +705,74 @@ function calculateNationalPreventableDeaths(asOf) {
  */
 function getNationalDeathRate() {
   return CITIES.reduce((sum, city) => sum + getPreventableDeathRate(city), 0);
+}
+
+/**
+ * Calculate preventable deaths for a city under a specific deployment scenario.
+ * Scenarios can override the effective VMT share or Waymo market share.
+ *
+ * @param {Object} city
+ * @param {Object} scenario - From DEPLOYMENT_SCENARIOS
+ * @param {Date} [asOf]
+ * @returns {number}
+ */
+function calculateScenarioDeaths(city, scenario, asOf) {
+  if (!asOf) asOf = new Date();
+  const startDate = new Date(city.delayStartDate);
+  if (asOf <= startDate) return 0;
+
+  let effectiveFactor;
+  if (scenario.vmtOverride != null) {
+    // Scenario specifies a total VMT share directly
+    effectiveFactor = scenario.vmtOverride * COUNTER_METHODOLOGY.crashReductionFactor;
+  } else if (scenario.waymoShareOverride != null) {
+    // Scenario overrides just the Waymo market share
+    effectiveFactor = city.rideHailVmtShare * scenario.waymoShareOverride * COUNTER_METHODOLOGY.crashReductionFactor;
+  } else {
+    // Conservative — use city's own effectiveFactor
+    effectiveFactor = city.effectiveFactor;
+  }
+
+  let totalFatalities = 0;
+  const startYear = startDate.getFullYear();
+  const endYear = asOf.getFullYear();
+
+  for (let year = startYear; year <= endYear; year++) {
+    const yearFatalities = city.annualFatalities[year];
+    if (yearFatalities == null) continue;
+    const yearStart = new Date(year, 0, 1);
+    const yearEnd = new Date(year + 1, 0, 1);
+    const yearMs = yearEnd - yearStart;
+    const periodStart = (year === startYear) ? startDate : yearStart;
+    const periodEnd = (year === endYear) ? asOf : yearEnd;
+    const fraction = Math.max(0, (periodEnd - periodStart) / yearMs);
+    totalFatalities += yearFatalities * fraction;
+  }
+
+  return totalFatalities * effectiveFactor;
+}
+
+/**
+ * Calculate national scenario deaths across all cities.
+ */
+function calculateNationalScenarioDeaths(scenario, asOf) {
+  return CITIES.reduce((sum, city) => sum + calculateScenarioDeaths(city, scenario, asOf), 0);
+}
+
+/**
+ * Estimate crashes and injuries prevented for a city (conservative scenario).
+ * Uses national NHTSA ratios applied to the city's fatality data.
+ *
+ * @param {Object} city
+ * @param {Date} [asOf]
+ * @returns {{ deaths: number, injuryCrashes: number, seriousInjuries: number, pedestrianInjuries: number }}
+ */
+function calculatePreventedHarms(city, asOf) {
+  const deaths = calculatePreventableDeaths(city, asOf);
+  return {
+    deaths,
+    injuryCrashes:       deaths * INJURY_CRASH_PER_FATALITY,
+    seriousInjuries:     deaths * SERIOUS_INJURY_PER_FATALITY,
+    pedestrianInjuries:  deaths * PEDESTRIAN_INJURY_PER_FATALITY * (0.92 / 0.85),
+  };
 }

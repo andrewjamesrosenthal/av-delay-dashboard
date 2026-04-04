@@ -340,6 +340,32 @@ section + section {
   margin-bottom: 10px;
 }
 
+.card-harms {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.card-harm-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.card-harm-value {
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  line-height: 1;
+}
+
+.card-harm-label {
+  font-size: 9px;
+  color: var(--text-muted);
+  line-height: 1.2;
+}
+
 .card-blocker {
   font-size: 11px;
   color: var(--text-secondary);
@@ -744,7 +770,7 @@ section + section {
 
 /* ─── Comparison Section ─── */
 #comparison {
-  background: var(--bg-surface);
+  background: var(--bg-base);
 }
 
 .comparison-grid {
@@ -830,6 +856,15 @@ section + section {
 
 .status-table tr:hover td {
   background: var(--bg-highlight);
+}
+
+.harms-table th {
+  white-space: nowrap;
+}
+
+.harms-table td {
+  white-space: nowrap;
+  font-size: 13px;
 }
 
 .status-dot {
@@ -1074,6 +1109,229 @@ footer {
   .header-nav {
     display: none;
   }
+}
+
+/* ─── National Summary Strip ─── */
+#national-summary {
+  background: var(--bg-base);
+  padding: 28px 0;
+}
+
+.national-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+@media (max-width: 640px) {
+  .national-summary-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.summary-stat {
+  background: var(--bg-elevated);
+  padding: 20px 18px;
+  text-align: center;
+}
+
+.summary-stat-value {
+  font-size: clamp(22px, 3vw, 32px);
+  font-weight: 800;
+  font-family: var(--font-mono);
+  line-height: 1;
+  margin-bottom: 6px;
+}
+
+.summary-stat-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  line-height: 1.4;
+}
+
+.summary-stat-note {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  font-style: italic;
+}
+
+/* ─── Scenarios Section ─── */
+#scenarios {
+  background: var(--bg-base);
+}
+
+.scenarios-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 16px;
+}
+
+.scenario-row {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px 24px;
+  display: grid;
+  grid-template-columns: 200px 1fr auto;
+  gap: 24px;
+  align-items: center;
+  position: relative;
+  overflow: hidden;
+  transition: border-color var(--transition);
+}
+
+.scenario-row::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+}
+
+.scenario-row:hover {
+  border-color: var(--border);
+  background: var(--bg-elevated);
+}
+
+@media (max-width: 768px) {
+  .scenario-row {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+}
+
+.scenario-row-label {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.scenario-row-sublabel {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.scenario-row-bar-area {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.scenario-bar-track {
+  height: 6px;
+  background: var(--bg-highlight);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.scenario-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.scenario-row-mini-stats {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.scenario-mini-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.scenario-mini-stat-value {
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+}
+
+.scenario-mini-stat-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.scenario-row-number {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.scenario-big-number {
+  font-size: clamp(28px, 4vw, 42px);
+  font-weight: 800;
+  font-family: var(--font-mono);
+  line-height: 1;
+}
+
+.scenario-big-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 3px;
+}
+
+.scenario-disclaimer {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* ─── Harms prevented stats ─── */
+.harms-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+@media (max-width: 640px) {
+  .harms-grid { grid-template-columns: 1fr 1fr; }
+}
+
+.harm-card {
+  background: var(--bg-elevated);
+  padding: 16px;
+  text-align: center;
+}
+
+.harm-value {
+  font-size: 24px;
+  font-weight: 800;
+  font-family: var(--font-mono);
+  line-height: 1;
+  margin-bottom: 5px;
+}
+
+.harm-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.harm-source {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 3px;
+  font-style: italic;
 }
 
 /* ─── Horizontal bar chart (pure CSS) ─── */
