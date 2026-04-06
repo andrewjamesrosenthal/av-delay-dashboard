@@ -291,13 +291,14 @@ URL: {article['url']}
 Write a tweet (max 240 characters total including the URL) that:
 - Acknowledges the tragedy with genuine empathy - a real person was hurt or killed
 - Gently notes that autonomous vehicle technology could help prevent crashes like this
-- Links to avpolicywatch.com or the article URL
+- Must end with this exact article URL: {article['url']}
 - Tone: compassionate and factual, never mocking or blaming the victim or driver
 - Do NOT say things like "humans are bad drivers" or anything that blames the person
 - Frame it as a systemic issue - we have technology that could save lives and it's being blocked
+- Do NOT mention avpolicywatch.com - only the article URL
 - No hashtags, no exclamation points, no emojis
 
-Example tone: "Another preventable tragedy. Crashes like this are exactly why we track the cost of stalling AV deployment. [url]"
+Example: "A preventable tragedy. This is why expanding AV deployment matters - technology that could have helped is sitting idle in regulatory limbo. [article url]"
 
 Return ONLY the tweet text. Nothing else."""
 
@@ -342,11 +343,11 @@ def make_reply_tweet(client, tweet_text, author):
 
 Write a supportive reply (max 240 characters) that:
 - Agrees with or builds on their point if it's pro-AV or pro-safety
-- Adds a relevant stat or insight from avpolicywatch.com if fitting
 - Is genuine and conversational, not corporate or preachy
 - Never argues, attacks, or is condescending
-- If the tweet is about AV safety, you can mention Waymo's safety record
-- If it's about regulation/legislation, you can reference the cities being tracked
+- If the tweet is about AV safety, you can cite Waymo's safety record (0.02 serious injuries/million miles vs ~1.5 for human drivers)
+- If it's about regulation/legislation, you can mention cities like Boston or DC that have stalled for 2+ years
+- Do NOT mention avpolicywatch.com - this is just a conversational reply
 - No hashtags, no emojis
 
 Return ONLY the reply text. Nothing else."""
@@ -460,7 +461,7 @@ def job_engage(conn, anthropic_client, twitter_client):
             try:
                 user = twitter_client.get_user(username=username)
                 if user.data:
-                    twitter_client.follow_user(user.data.id)
+                    twitter_client.follow_user(user.data.id, user_auth=True)
                     mark_followed(conn, username)
                     print(f"  [engage] followed @{username}")
                     time.sleep(5)
@@ -481,6 +482,7 @@ def job_engage(conn, anthropic_client, twitter_client):
                 max_results=5,
                 tweet_fields=['text', 'created_at'],
                 exclude=['retweets', 'replies'],
+                user_auth=True,
             )
             if not tweets.data:
                 continue
