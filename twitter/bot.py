@@ -1,13 +1,16 @@
 """
 AV Policy Watch - Twitter Bot
 -------------------------------
-Runs two jobs in a continuous loop:
+Runs three jobs in a continuous loop:
 
 1. CRASH SCANNER  - Scans Google News every CHECK_INTERVAL_HOURS for human-caused
-                    car crash articles, generates a pointed pro-AV tweet, and posts it.
+                    car crash articles, generates a compassionate pro-AV tweet, and posts it.
 
 2. COUNTER TWEETS - Posts daily per-city "if they had launched on X date..." stats
                     and a weekly national summary. Skips if already posted today/this week.
+
+3. ENGAGE         - Monitors key AV/policy accounts for relevant tweets and replies
+                    supportively. Follows the curated list on first run.
 
 Setup:
   pip install -r requirements.txt
@@ -37,6 +40,30 @@ TWITTER_ACCESS_TOKEN_SECRET = os.getenv('TWITTER_ACCESS_TOKEN_SECRET')
 
 CHECK_INTERVAL_HOURS = 2      # how often to scan for crash news
 MAX_CRASH_TWEETS_PER_RUN = 2  # cap so the account doesn't spam
+MAX_REPLIES_PER_RUN = 2       # max replies to monitored accounts per run
+
+# ─── Accounts to follow + monitor for relevant tweets ─────────────────────────
+
+FOLLOW_AND_MONITOR = [
+    'Waymo',           # Waymo official
+    'Tesla',           # Tesla official
+    'zoox',            # Zoox (Amazon AV)
+    'Motional_AD',     # Motional (Hyundai/Aptiv)
+    'NHTSAgov',        # National Highway Traffic Safety Administration
+    'AVInstitute',     # Autonomous Vehicle Industry Association
+    'transportation',  # US DOT
+    'VisionZeroNet',   # Vision Zero Network
+    'SAFERoads',       # road safety advocates
+    'RoboticistBrian', # AV policy commentators - add more as you find them
+]
+
+# Keywords that make a tweet worth replying to
+ENGAGE_KEYWORDS = [
+    'autonomous', 'self-driving', 'robotaxi', 'waymo', 'av safety',
+    'traffic death', 'traffic fatality', 'road safety', 'vision zero',
+    'blocked', 'regulation', 'legislation', 'framework', 'permit',
+    'crash prevention', 'lidar', 'deployment',
+]
 
 # ─── City data (mirrors js/data.js methodology) ───────────────────────────────
 # effective_factor = ride_hail_vmt_share * waymo_market_share(0.22) * crash_reduction(0.85)
@@ -136,6 +163,18 @@ def init_db():
             tweeted_at TEXT
         )
     ''')
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS replied_tweets (
+            tweet_id TEXT PRIMARY KEY,
+            replied_at TEXT
+        )
+    ''')
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS followed_users (
+            username TEXT PRIMARY KEY,
+            followed_at TEXT
+        )
+    ''')
     conn.commit()
     return conn
 
@@ -165,6 +204,34 @@ def mark_counter_posted(conn, key):
     conn.execute(
         'INSERT OR REPLACE INTO counter_tweets VALUES (?, ?)',
         (key, datetime.now().isoformat())
+    )
+    conn.commit()
+
+
+def already_replied(conn, tweet_id):
+    return conn.execute(
+        'SELECT tweet_id FROM replied_tweets WHERE tweet_id = ?', (str(tweet_id),)
+    ).fetchone() is not None
+
+
+def mark_replied(conn, tweet_id):
+    conn.execute(
+        'INSERT OR REPLACE INTO replied_tweets VALUES (?, ?)',
+        (str(tweet_id), datetime.now().isoformat())
+    )
+    conn.commit()
+
+
+def already_followed(conn, username):
+    return conn.execute(
+        'SELECT username FROM followed_users WHERE username = ?', (username.lower(),)
+    ).fetchone() is not None
+
+
+def mark_followed(conn, username):
+    conn.execute(
+        'INSERT OR REPLACE INTO followed_users VALUES (?, ?)',
+        (username.lower(), datetime.now().isoformat())
     )
     conn.commit()
 
@@ -267,6 +334,36 @@ def make_weekly_national_tweet():
     )
 
 
+def make_reply_tweet(client, tweet_text, author):
+    prompt = f"""You run @AVPolicyWatch, a pro-autonomous vehicle policy account.
+
+@{author} just posted:
+"{tweet_text}"
+
+Write a supportive reply (max 240 characters) that:
+- Agrees with or builds on their point if it's pro-AV or pro-safety
+- Adds a relevant stat or insight from avpolicywatch.com if fitting
+- Is genuine and conversational, not corporate or preachy
+- Never argues, attacks, or is condescending
+- If the tweet is about AV safety, you can mention Waymo's safety record
+- If it's about regulation/legislation, you can reference the cities being tracked
+- No hashtags, no emojis
+
+Return ONLY the reply text. Nothing else."""
+
+    msg = client.messages.create(
+        model='claude-sonnet-4-6',
+        max_tokens=120,
+        messages=[{'role': 'user', 'content': prompt}]
+    )
+    return msg.content[0].text.strip()
+
+
+def is_worth_replying(tweet_text):
+    text = tweet_text.lower()
+    return any(kw in text for kw in ENGAGE_KEYWORDS)
+
+
 # ─── Jobs ─────────────────────────────────────────────────────────────────────
 
 def job_crash_scanner(conn, anthropic_client, twitter_client):
@@ -354,6 +451,64 @@ def job_counter_tweets(conn, twitter_client):
             print(f"  [counter] weekly tweet already posted this week")
 
 
+def job_engage(conn, anthropic_client, twitter_client):
+    """Follow curated accounts and reply to relevant recent tweets."""
+
+    # Step 1: follow anyone not yet followed
+    for username in FOLLOW_AND_MONITOR:
+        if not already_followed(conn, username):
+            try:
+                user = twitter_client.get_user(username=username)
+                if user.data:
+                    twitter_client.follow_user(user.data.id)
+                    mark_followed(conn, username)
+                    print(f"  [engage] followed @{username}")
+                    time.sleep(5)
+            except Exception as e:
+                print(f"  [engage] follow error for @{username}: {e}")
+
+    # Step 2: check recent tweets from monitored accounts, reply to relevant ones
+    replies_posted = 0
+    for username in FOLLOW_AND_MONITOR:
+        if replies_posted >= MAX_REPLIES_PER_RUN:
+            break
+        try:
+            user = twitter_client.get_user(username=username)
+            if not user.data:
+                continue
+            tweets = twitter_client.get_users_tweets(
+                user.data.id,
+                max_results=5,
+                tweet_fields=['text', 'created_at'],
+                exclude=['retweets', 'replies'],
+            )
+            if not tweets.data:
+                continue
+            for tweet in tweets.data:
+                if replies_posted >= MAX_REPLIES_PER_RUN:
+                    break
+                if already_replied(conn, tweet.id):
+                    continue
+                if not is_worth_replying(tweet.text):
+                    continue
+                reply = make_reply_tweet(anthropic_client, tweet.text, username)
+                if len(reply) > 280:
+                    reply = reply[:277] + '...'
+                print(f"  [engage] replying to @{username}: {reply[:80]}...")
+                twitter_client.create_tweet(
+                    text=reply,
+                    in_reply_to_tweet_id=tweet.id,
+                )
+                mark_replied(conn, tweet.id)
+                replies_posted += 1
+                # Random delay between replies so it feels natural
+                time.sleep(random.randint(30, 120))
+        except Exception as e:
+            print(f"  [engage] error with @{username}: {e}")
+
+    print(f"  [engage] posted {replies_posted} replies")
+
+
 # ─── Main loop ────────────────────────────────────────────────────────────────
 
 def main():
@@ -378,13 +533,14 @@ def main():
         access_token_secret=TWITTER_ACCESS_TOKEN_SECRET,
     )
 
-    print(f"Running. Crash scan every {CHECK_INTERVAL_HOURS}h, counter tweets daily.\n")
+    print(f"Running. Crash scan every {CHECK_INTERVAL_HOURS}h, counter tweets daily, engagement each run.\n")
 
     while True:
         now = datetime.now()
         print(f"[{now.strftime('%Y-%m-%d %H:%M')}] Running jobs...")
 
         job_counter_tweets(conn, twitter_client)
+        job_engage(conn, anthropic_client, twitter_client)
         job_crash_scanner(conn, anthropic_client, twitter_client)
 
         print(f"  Done. Next run in {CHECK_INTERVAL_HOURS} hours.\n")
