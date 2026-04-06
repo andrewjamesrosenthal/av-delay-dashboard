@@ -127,31 +127,65 @@ CITIES = [
     },
 ]
 
-# ─── URL resolver (Google News RSS returns encoded redirect URLs) ─────────────
+# ─── URL extraction from Google News RSS ──────────────────────────────────────
 
-def resolve_url(url, timeout=8):
-    """Follow redirects to get the real article URL."""
-    try:
-        resp = requests.head(url, allow_redirects=True, timeout=timeout,
-                             headers={'User-Agent': 'Mozilla/5.0'})
-        return resp.url
-    except Exception:
+import base64
+import re
+
+def decode_google_news_url(google_url):
+    """Extract the real article URL from a Google News RSS encoded link."""
+    # Try to extract from the URL path - Google encodes the real URL in base64
+    match = re.search(r'/articles/(CB[A-Za-z0-9_-]+)', google_url)
+    if match:
+        encoded = match.group(1)
+        # Google uses URL-safe base64, pad if needed
+        padded = encoded + '=' * (4 - len(encoded) % 4)
         try:
-            resp = requests.get(url, allow_redirects=True, timeout=timeout,
-                                headers={'User-Agent': 'Mozilla/5.0'})
-            return resp.url
+            decoded = base64.urlsafe_b64decode(padded)
+            # The real URL is embedded in the decoded bytes after some prefix bytes
+            urls = re.findall(rb'https?://[^\s\x00-\x1f"\'<>]+', decoded)
+            # Filter out google.com URLs, take the first real one
+            for url in urls:
+                url_str = url.decode('utf-8', errors='ignore')
+                if 'google.com' not in url_str and 'googleapis.com' not in url_str:
+                    return url_str
         except Exception:
-            return url
+            pass
+
+    # Fallback: try to follow the redirect with a proper session
+    try:
+        session = requests.Session()
+        session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+            'Accept': 'text/html,application/xhtml+xml',
+            'Accept-Language': 'en-US,en;q=0.9',
+        })
+        # Accept cookies automatically
+        resp = session.get(google_url, allow_redirects=True, timeout=10)
+        if 'consent.google' not in resp.url and 'news.google' not in resp.url:
+            return resp.url
+        # Check for redirect URL in the consent page
+        consent_match = re.search(r'continue=(https?://[^&"]+)', resp.url + resp.text)
+        if consent_match:
+            continue_url = requests.utils.unquote(consent_match.group(1))
+            if 'google.com' not in continue_url:
+                return continue_url
+    except Exception:
+        pass
+
+    return google_url
 
 
 # ─── News feeds ───────────────────────────────────────────────────────────────
+# Use Bing News RSS (gives direct article URLs) + Google News as backup
 
 CRASH_FEEDS = [
-    'https://news.google.com/rss/search?q=car+crash+driver+killed&hl=en-US&gl=US&ceid=US:en',
-    'https://news.google.com/rss/search?q=fatal+car+accident+speeding+drunk&hl=en-US&gl=US&ceid=US:en',
-    'https://news.google.com/rss/search?q=pedestrian+killed+driver&hl=en-US&gl=US&ceid=US:en',
-    'https://news.google.com/rss/search?q=distracted+driver+crash+death&hl=en-US&gl=US&ceid=US:en',
-    'https://news.google.com/rss/search?q=drunk+driver+fatal+crash&hl=en-US&gl=US&ceid=US:en',
+    # Bing News - direct article URLs, no redirect issues
+    'https://www.bing.com/news/search?q=fatal+car+crash+driver&format=rss',
+    'https://www.bing.com/news/search?q=drunk+driver+crash+killed&format=rss',
+    'https://www.bing.com/news/search?q=pedestrian+killed+by+driver&format=rss',
+    'https://www.bing.com/news/search?q=speeding+crash+death&format=rss',
+    'https://www.bing.com/news/search?q=distracted+driver+fatal+accident&format=rss',
 ]
 
 RELEVANCE_KEYWORDS = [
@@ -299,24 +333,25 @@ def national_totals(as_of=None):
 # ─── Tweet generators ──────────────────────────────────────────────────────────
 
 def make_crash_tweet(client, article):
-    prompt = f"""You run @AVPolicyWatch, a pro-autonomous vehicle policy account that makes the case for autonomous vehicle deployment.
+    prompt = f"""You run @AVPolicyWatch, a pro-autonomous vehicle policy account.
 
-You found this car crash news article:
+A car crash news article was just published:
 Title: {article['title']}
 Summary: {article['summary'][:600]}
-URL: {article['url']}
 
-Write a tweet (max 240 characters total including the URL) that:
-- Acknowledges the tragedy with genuine empathy - a real person was hurt or killed
-- Gently notes that autonomous vehicle technology could help prevent crashes like this
-- Must end with this exact article URL: {article['url']}
+Write a tweet (max 270 characters, NO URL - the source link goes in a reply) that:
+- Acknowledges the tragedy with genuine empathy
+- Notes that autonomous vehicle technology could help prevent crashes like this
 - Tone: compassionate and factual, never mocking or blaming the victim or driver
 - Do NOT say things like "humans are bad drivers" or anything that blames the person
-- Frame it as a systemic issue - we have technology that could save lives and it's being blocked
-- Do NOT mention avpolicywatch.com - only the article URL
+- Frame it as a systemic issue - we have technology that could save lives
+- Do NOT include any URLs or links - these go in a separate reply for algorithm reasons
+- Do NOT mention avpolicywatch.com
 - No hashtags, no exclamation points, no emojis
 
-Example: "A preventable tragedy. This is why expanding AV deployment matters - technology that could have helped is sitting idle in regulatory limbo. [article url]"
+Examples:
+- "A family lost a loved one to a drunk driver in Houston today. Autonomous vehicles don't drink. They don't get distracted. The technology exists - it's the regulatory will that doesn't."
+- "Another pedestrian killed by a speeding driver in Chicago. AV sensors detect pedestrians in conditions human eyes can't. Five US cities are blocking this technology right now."
 
 Return ONLY the tweet text. Nothing else."""
 
@@ -388,14 +423,26 @@ def is_worth_replying(tweet_text):
 def job_crash_scanner(conn, anthropic_client, twitter_client):
     print(f"  [crash scanner] fetching feeds...")
     articles = []
+    seen_urls = set()
     for feed_url in CRASH_FEEDS:
         try:
             feed = feedparser.parse(feed_url)
             for entry in feed.entries[:8]:
+                raw_url = entry.get('link', '')
+                # Bing gives direct URLs; decode Google News if it sneaks in
+                if 'news.google.com' in raw_url:
+                    url = decode_google_news_url(raw_url)
+                else:
+                    url = raw_url
+                # Deduplicate across feeds
+                if url in seen_urls or not url:
+                    continue
+                seen_urls.add(url)
                 articles.append({
                     'title': entry.get('title', ''),
-                    'url':   resolve_url(entry.get('link', '')),
+                    'url':   url,
                     'summary': entry.get('summary', ''),
+                    'source': entry.get('source', {}).get('title', ''),
                 })
         except Exception as e:
             print(f"  [crash scanner] feed error: {e}")
@@ -413,11 +460,26 @@ def job_crash_scanner(conn, anthropic_client, twitter_client):
     posted = 0
     for article in new[:MAX_CRASH_TWEETS_PER_RUN]:
         try:
+            # Post as a thread: main tweet (no link for algo boost), reply with source
             tweet = make_crash_tweet(anthropic_client, article)
             if len(tweet) > 280:
                 tweet = tweet[:277] + '...'
-            print(f"  [crash scanner] posting: {tweet[:80]}...")
-            twitter_client.create_tweet(text=tweet)
+            print(f"  [crash scanner] posting thread: {tweet[:80]}...")
+
+            # Tweet 1: the commentary (no link = better reach)
+            result = twitter_client.create_tweet(text=tweet)
+            main_tweet_id = result.data['id']
+
+            # Tweet 2: reply with the source link
+            source_name = article.get('source', '')
+            source_text = f"Source: {article['url']}"
+            if source_name:
+                source_text = f"Source ({source_name}): {article['url']}"
+            twitter_client.create_tweet(
+                text=source_text,
+                in_reply_to_tweet_id=main_tweet_id,
+            )
+
             mark_article_tweeted(conn, article['url'])
             posted += 1
             # Random delay between 20 and 90 minutes so posts feel organic
