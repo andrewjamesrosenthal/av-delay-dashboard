@@ -22,6 +22,7 @@ import os
 import time
 import random
 import sqlite3
+import requests
 import feedparser
 import tweepy
 import anthropic
@@ -45,16 +46,16 @@ MAX_REPLIES_PER_RUN = 2       # max replies to monitored accounts per run
 # ─── Accounts to follow + monitor for relevant tweets ─────────────────────────
 
 FOLLOW_AND_MONITOR = [
-    'Waymo',           # Waymo official
-    'Tesla',           # Tesla official
-    'zoox',            # Zoox (Amazon AV)
-    'Motional_AD',     # Motional (Hyundai/Aptiv)
-    'NHTSAgov',        # National Highway Traffic Safety Administration
-    'AVInstitute',     # Autonomous Vehicle Industry Association
-    'transportation',  # US DOT
-    'VisionZeroNet',   # Vision Zero Network
-    'SAFERoads',       # road safety advocates
-    'RoboticistBrian', # AV policy commentators - add more as you find them
+    'Waymo',          # Waymo official
+    'Tesla',          # Tesla official
+    'zoox',           # Zoox (Amazon AV)
+    'Motional_AD',    # Motional (Hyundai/Aptiv AV)
+    'aurora_inno',    # Aurora Innovation
+    'NHTSAgov',       # National Highway Traffic Safety Administration
+    'USDOT',          # US Dept of Transportation
+    'VisionZeroNet',  # Vision Zero Network
+    'AV_Industry',    # Autonomous Vehicle Industry Association (AVIA)
+    'elonmusk',       # Elon Musk - frequent AV/Tesla content
 ]
 
 # Keywords that make a tweet worth replying to
@@ -125,6 +126,23 @@ CITIES = [
         'pedestrian_injury_per_fatality': 3,
     },
 ]
+
+# ─── URL resolver (Google News RSS returns encoded redirect URLs) ─────────────
+
+def resolve_url(url, timeout=8):
+    """Follow redirects to get the real article URL."""
+    try:
+        resp = requests.head(url, allow_redirects=True, timeout=timeout,
+                             headers={'User-Agent': 'Mozilla/5.0'})
+        return resp.url
+    except Exception:
+        try:
+            resp = requests.get(url, allow_redirects=True, timeout=timeout,
+                                headers={'User-Agent': 'Mozilla/5.0'})
+            return resp.url
+        except Exception:
+            return url
+
 
 # ─── News feeds ───────────────────────────────────────────────────────────────
 
@@ -376,7 +394,7 @@ def job_crash_scanner(conn, anthropic_client, twitter_client):
             for entry in feed.entries[:8]:
                 articles.append({
                     'title': entry.get('title', ''),
-                    'url':   entry.get('link', ''),
+                    'url':   resolve_url(entry.get('link', '')),
                     'summary': entry.get('summary', ''),
                 })
         except Exception as e:

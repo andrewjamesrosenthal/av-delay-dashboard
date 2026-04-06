@@ -1,4 +1,5 @@
 anthropic
 tweepy
 feedparser
+requests
 python-dotenv
