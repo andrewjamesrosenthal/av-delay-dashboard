@@ -17,6 +17,7 @@ Setup:
 
 import os
 import time
+import random
 import sqlite3
 import feedparser
 import tweepy
@@ -213,7 +214,7 @@ def national_totals(as_of=None):
 # ─── Tweet generators ──────────────────────────────────────────────────────────
 
 def make_crash_tweet(client, article):
-    prompt = f"""You run @AVPolicyWatch, a pro-autonomous vehicle advocacy account that highlights the human cost of blocking AV deployment.
+    prompt = f"""You run @AVPolicyWatch, a pro-autonomous vehicle policy account that makes the case for autonomous vehicle deployment.
 
 You found this car crash news article:
 Title: {article['title']}
@@ -221,11 +222,15 @@ Summary: {article['summary'][:600]}
 URL: {article['url']}
 
 Write a tweet (max 240 characters total including the URL) that:
-- States a brief observation about this crash / human driving failure
-- Makes the implicit case that AV technology could have prevented it
-- Ends with the article URL
-- Tone: dry, factual, pointed - let the irony do the work, not moralizing
+- Acknowledges the tragedy with genuine empathy - a real person was hurt or killed
+- Gently notes that autonomous vehicle technology could help prevent crashes like this
+- Links to avpolicywatch.com or the article URL
+- Tone: compassionate and factual, never mocking or blaming the victim or driver
+- Do NOT say things like "humans are bad drivers" or anything that blames the person
+- Frame it as a systemic issue - we have technology that could save lives and it's being blocked
 - No hashtags, no exclamation points, no emojis
+
+Example tone: "Another preventable tragedy. Crashes like this are exactly why we track the cost of stalling AV deployment. [url]"
 
 Return ONLY the tweet text. Nothing else."""
 
@@ -299,7 +304,11 @@ def job_crash_scanner(conn, anthropic_client, twitter_client):
             twitter_client.create_tweet(text=tweet)
             mark_article_tweeted(conn, article['url'])
             posted += 1
-            time.sleep(15)
+            # Random delay between 20 and 90 minutes so posts feel organic
+            if posted < MAX_CRASH_TWEETS_PER_RUN:
+                delay_minutes = random.randint(20, 90)
+                print(f"  [crash scanner] waiting {delay_minutes} min before next post...")
+                time.sleep(delay_minutes * 60)
         except Exception as e:
             print(f"  [crash scanner] post error: {e}")
 
